@@ -4,13 +4,13 @@ import numpy as np
 import joblib
 
 # Configuración de la interfaz
-st.set_page_config(page_title="Predicción de Viabilidad", layout="centered")
+st.set_page_config(page_title="Viabilidad de Tokenización", layout="centered")
 
 @st.cache_resource
 def load_assets():
-    # Cargamos tu archivo .pkl tal cual lo tienes
+    # Cargamos el archivo .pkl
     with open('modelo-class.pkl', 'rb') as f:
-        # El orden según tu estructura es: [modelo, encoder, variables, scaler]
+        # El orden según tu archivo es: [modelo, encoder, variables, scaler]
         data = joblib.load(f)
     return {
         "model": data[0],
@@ -20,11 +20,11 @@ def load_assets():
 
 assets = load_assets()
 model = assets["model"]
-variables_modelo = assets["variables"]
+variables_modelo = assets["variables"] # Aquí reside 'USO_DOS_3'
 scaler = assets["scaler"]
 
 st.title("🏗️ Evaluación de Viabilidad")
-st.markdown("Ingrese los datos para predecir la viabilidad del proyecto.")
+st.markdown("Complete los datos para predecir la viabilidad del proyecto.")
 
 with st.form("form_pred"):
     col1, col2 = st.columns(2)
@@ -41,12 +41,12 @@ with st.form("form_pred"):
 
 if submit:
     try:
-        # 1. Crear un DataFrame vacío con las columnas EXACTAS que el scaler espera
-        # Esto soluciona el error de USO_DOS_3, ya que ahora la columna existirá
+        # 1. Crear un DataFrame de CEROS con TODAS las columnas que el modelo conoce
+        # Esto hace que 'USO_DOS_3' exista con valor 0 y el Scaler no proteste.
         input_df = pd.DataFrame(np.zeros((1, len(variables_modelo))), columns=variables_modelo)
         
-        # 2. Asignar los valores de la interfaz a las columnas correspondientes
-        # Usamos los nombres técnicos que el modelo tiene en su memoria
+        # 2. Inyectar los valores que sí tenemos desde la interfaz
+        # Estos nombres deben coincidir con los que el modelo tiene en memoria
         mapping = {
             'PRECIOVTAX': precio,
             'ESTRATO': estrato,
@@ -60,15 +60,15 @@ if submit:
             if col in input_df.columns:
                 input_df[col] = val
         
-        # 3. Reordenar las columnas para que coincidan 100% con el fit original
+        # 3. REORDENAR: Forzamos el orden exacto de las columnas
         input_df = input_df[variables_modelo]
 
-        # 4. Escalar y Predecir
+        # 4. Transformación y Predicción
         input_scaled = scaler.transform(input_df)
         pred = model.predict(input_scaled)[0]
         prob = model.predict_proba(input_scaled)[0]
 
-        # 5. Mostrar resultados
+        # 5. Resultados
         st.divider()
         if pred == 1:
             st.success(f"✅ PROYECTO VIABLE (Confianza: {prob[1]*100:.1f}%)")
@@ -76,6 +76,6 @@ if submit:
             st.error(f"❌ PROYECTO NO VIABLE (Confianza: {prob[0]*100:.1f}%)")
             
     except Exception as e:
-        st.error(f"Error en la predicción: {e}")
-        with st.expander("Ver diagnóstico"):
-            st.write("Columnas esperadas por el modelo:", variables_modelo)
+        st.error(f"Error técnico en el procesamiento: {e}")
+        with st.expander("Ver diagnóstico de columnas"):
+            st.write("Columnas esperadas:", variables_modelo)

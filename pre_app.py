@@ -3,13 +3,14 @@ import pandas as pd
 import numpy as np
 import joblib
 
-# Configuración de la página
-st.set_page_config(page_title="Viabilidad de Tokenización", layout="centered")
+# Configuración de la interfaz
+st.set_page_config(page_title="Predicción de Viabilidad", layout="centered")
 
 @st.cache_resource
 def load_assets():
+    # Cargamos tu archivo .pkl tal cual lo tienes
     with open('modelo-class.pkl', 'rb') as f:
-        # El orden según tu archivo es: [modelo, encoder, variables, scaler]
+        # El orden según tu estructura es: [modelo, encoder, variables, scaler]
         data = joblib.load(f)
     return {
         "model": data[0],
@@ -17,39 +18,35 @@ def load_assets():
         "scaler": data[3]
     }
 
-try:
-    assets = load_assets()
-    model = assets["model"]
-    variables = assets["variables"] # Aquí está la lista que contiene 'USO_DOS_3'
-    scaler = assets["scaler"]
-except Exception as e:
-    st.error(f"Error al cargar el modelo: {e}")
-    st.stop()
+assets = load_assets()
+model = assets["model"]
+variables_modelo = assets["variables"]
+scaler = assets["scaler"]
 
 st.title("🏗️ Evaluación de Viabilidad")
-st.markdown("Ingrese los datos base para determinar la viabilidad del proyecto.")
+st.markdown("Ingrese los datos para predecir la viabilidad del proyecto.")
 
 with st.form("form_pred"):
     col1, col2 = st.columns(2)
     with col1:
-        precio = st.number_input("Precio por m² (mil COP)", value=4200.0)
-        estrato = st.selectbox("Estrato", [1, 2, 3, 4, 5, 6], index=3)
-        area = st.number_input("Área Total (m²)", value=200.0)
+        precio = st.number_input("Precio por m² (PRECIOVTAX)", value=4200.0)
+        estrato = st.selectbox("Estrato (ESTRATO)", [1, 2, 3, 4, 5, 6], index=3)
+        area = st.number_input("Área Total (AREATOTZC)", value=200.0)
     with col2:
-        avance = st.slider("Avance de Obra (%)", 0, 100, 10)
-        pisos = st.number_input("Número de Pisos", value=5)
-        tipo_val = st.selectbox("Tipo de Valor", [1, 2], format_func=lambda x: "Real" if x==1 else "Estimado")
+        avance = st.slider("Avance de Obra (GRADOAVANC)", 0, 100, 10)
+        pisos = st.number_input("Número de Pisos (NRO_PISOS)", value=5)
+        tipo_val = st.selectbox("Tipo de Valor (TIPOVRDEST)", [1, 2], format_func=lambda x: "Real" if x==1 else "Estimado")
     
-    submit = st.form_submit_button("ANALIZAR VIABILIDAD")
+    submit = st.form_submit_button("ANALIZAR")
 
 if submit:
     try:
-        # 1. Crear DataFrame con Ceros usando la estructura EXACTA del entrenamiento
-        # Esto garantiza que 'USO_DOS_3' y otras variables existan con valor 0
-        input_df = pd.DataFrame(np.zeros((1, len(variables))), columns=variables)
+        # 1. Crear un DataFrame vacío con las columnas EXACTAS que el scaler espera
+        # Esto soluciona el error de USO_DOS_3, ya que ahora la columna existirá
+        input_df = pd.DataFrame(np.zeros((1, len(variables_modelo))), columns=variables_modelo)
         
-        # 2. Mapear solo los campos que tenemos en la interfaz
-        # Usamos nombres estándar del CEED-DANE que suelen estar en tu modelo
+        # 2. Asignar los valores de la interfaz a las columnas correspondientes
+        # Usamos los nombres técnicos que el modelo tiene en su memoria
         mapping = {
             'PRECIOVTAX': precio,
             'ESTRATO': estrato,
@@ -63,23 +60,22 @@ if submit:
             if col in input_df.columns:
                 input_df[col] = val
         
-        # 3. Asegurar que el orden sea IDÉNTICO al que espera el scaler
-        input_df = input_df[variables]
+        # 3. Reordenar las columnas para que coincidan 100% con el fit original
+        input_df = input_df[variables_modelo]
 
-        # 4. Procesamiento
+        # 4. Escalar y Predecir
         input_scaled = scaler.transform(input_df)
-        prediccion = model.predict(input_scaled)[0]
-        probabilidades = model.predict_proba(input_scaled)[0]
+        pred = model.predict(input_scaled)[0]
+        prob = model.predict_proba(input_scaled)[0]
 
-        # 5. Visualización de resultados
+        # 5. Mostrar resultados
         st.divider()
-        if prediccion == 1:
-            st.success(f"✅ PROYECTO VIABLE (Confianza: {probabilidades[1]*100:.1f}%)")
+        if pred == 1:
+            st.success(f"✅ PROYECTO VIABLE (Confianza: {prob[1]*100:.1f}%)")
         else:
-            st.error(f"❌ PROYECTO NO VIABLE (Confianza: {probabilidades[0]*100:.1f}%)")
+            st.error(f"❌ PROYECTO NO VIABLE (Confianza: {prob[0]*100:.1f}%)")
             
     except Exception as e:
         st.error(f"Error en la predicción: {e}")
-        # En caso de error, mostramos las variables para diagnóstico
-        with st.expander("Ver diagnóstico de variables"):
-            st.write("Variables esperadas por el modelo:", variables)
+        with st.expander("Ver diagnóstico"):
+            st.write("Columnas esperadas por el modelo:", variables_modelo)
